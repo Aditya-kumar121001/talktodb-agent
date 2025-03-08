@@ -51,8 +51,10 @@ const App: React.FC = () => {
   const [input, setInput] = useState<string>('');
   const [schema, setSchema] = useState<SchemaColumn[]>([]);
   const [isSchemaOpen, setIsSchemaOpen] = useState<boolean>(true);
-  const chatEndRef = useRef<HTMLDivElement>(null); // Reference to the end of the chat area
-  const suggestRef = useRef<HTMLInputElement>(null)
+  const [queryCache, setQueryCache] = useState<string[]>([]);
+  const [suggestion, setSuggestion] = useState<string>('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Fetch schema on component mount
   useEffect(() => {
@@ -68,18 +70,55 @@ const App: React.FC = () => {
     fetchSchema();
   }, []);
 
+  // Scroll to the bottom of the chat area when messages update
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
+  // Load cached queries from localStorage on mount
+  useEffect(() => {
+    const storedQueries = localStorage.getItem('queryCache');
+    if (storedQueries) {
+      setQueryCache(JSON.parse(storedQueries));
+    }
+  }, []);
+
+  // Save queryCache to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('queryCache', JSON.stringify(queryCache));
+  }, [queryCache]);
+
+  // Update suggestion based on input
+  useEffect(() => {
+    console.log('Input:', input, 'QueryCache:', queryCache);
+    if (input.trim()) {
+      const matchingQuery = queryCache.find((query) =>
+        query.toLowerCase().startsWith(input.toLowerCase())
+      );
+      if (matchingQuery) {
+        const remainderQuery = matchingQuery.slice(input.length);
+        setSuggestion(remainderQuery);
+      } else {
+        setSuggestion('');
+      }
+    } else {
+      setSuggestion('');
+    }
+  }, [input, queryCache]);
+
   const sendMessage = async (): Promise<void> => {
     if (!input.trim()) return;
+
+    if (!queryCache.includes(input)) {
+      setQueryCache((prev) => [...prev, input]);
+    }
 
     const userMessage: Message = { sender: 'user', text: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
+    setSuggestion('');
 
     const botMessage: Message = { sender: 'bot', text: '', isStreaming: true };
     setMessages((prev) => [...prev, botMessage]);
@@ -91,11 +130,9 @@ const App: React.FC = () => {
       );
       const botResponse = response.data.result;
 
-      // Handle different types of responses
       let finalBotMessage: Message;
 
       if (botResponse && botResponse.length > 0) {
-        // Check if the response contains a COUNT(*) key
         if ('COUNT(*)' in botResponse[0]) {
           finalBotMessage = {
             sender: 'bot',
@@ -103,7 +140,6 @@ const App: React.FC = () => {
             isStreaming: false,
           };
         } else if (botResponse.length === 1 && Object.keys(botResponse[0]).length === 1) {
-          // Handle single-value responses (not COUNT)
           const key = Object.keys(botResponse[0])[0];
           finalBotMessage = {
             sender: 'bot',
@@ -111,7 +147,6 @@ const App: React.FC = () => {
             isStreaming: false,
           };
         } else {
-          // Handle array of movies
           finalBotMessage = {
             sender: 'bot',
             results: botResponse,
@@ -119,7 +154,6 @@ const App: React.FC = () => {
           };
         }
       } else {
-        // No results
         finalBotMessage = {
           sender: 'bot',
           text: 'No results found',
@@ -146,6 +180,17 @@ const App: React.FC = () => {
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter') {
       sendMessage();
+    } else if (e.key === 'Tab' || e.key === 'ArrowRight') {
+      if (suggestion) {
+        e.preventDefault();
+        const matchingQuery = queryCache.find((query) =>
+          query.toLowerCase().startsWith(input.toLowerCase())
+        );
+        if (matchingQuery) {
+          setInput(matchingQuery);
+          setSuggestion('');
+        }
+      }
     }
   };
 
@@ -159,7 +204,6 @@ const App: React.FC = () => {
   const handlePromptClick = (prompt: string) => {
     setInput(prompt);
     sendMessage();
-    suggestRef.current.focus()
   };
 
   return (
@@ -195,9 +239,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Right Panel: Chatbot */}
-        <div className="w-full md:w-3/4 flex flex-col h-[648px]">
-
-
+        <div className="w-full md:w-3/4 flex flex-col h-[860px]">
           {/* Chat Area */}
           <div className="flex-1 overflow-y-auto mb-4 bg-gray-800 p-4 rounded-lg 
               [&::-webkit-scrollbar]:w-2
@@ -225,8 +267,8 @@ const App: React.FC = () => {
                     <ul className="space-y-1">
                       {msg.results.map((movie, idx) => {
                         const keys = Object.keys(movie);
-                        const titleKey = keys[0]; // First key (e.g., title)
-                        const secondKey = keys[1]; // Second key (e.g., popularity, vote_average)
+                        const titleKey = keys[0]; 
+                        const secondKey = keys[1];
                         const secondValue = secondKey && typeof movie[secondKey] === 'number'
                           ? movie[secondKey].toFixed(1)
                           : '-';
@@ -242,7 +284,7 @@ const App: React.FC = () => {
                     <pre className="whitespace-pre-wrap break-words">{msg.text}</pre>
                   )}
                 </div>
-                <div ref={chatEndRef} /> {/* Invisible div to scroll to */}
+                <div ref={chatEndRef} /> {/* Invisible div to scroll to down*/}
               </div>
             ))}
           </div>
@@ -253,7 +295,6 @@ const App: React.FC = () => {
               <button
                 key={index}
                 onClick={() => handlePromptClick(prompt)}
-                
                 className="p-2 bg-gray-700 rounded-lg hover:bg-gray-600 transition text-sm"
               >
                 {prompt}
@@ -262,15 +303,25 @@ const App: React.FC = () => {
           </div>
 
           {/* Chat Input */}
-          <div className="w-full flex items-center bg-gray-800 rounded-lg p-2">
+          <div className="relative w-full flex items-center bg-gray-800 rounded-lg p-2">
+            {suggestion && input.trim() && (
+              <div
+                className="absolute inset-0 p-4 text-gray-500 pointer-events-none"
+                style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
+                <span className="text-white">{input}</span>
+                <span>{suggestion}</span>
+              </div>
+            )}
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              ref={suggestRef}
               placeholder="Ask a question (e.g., 'how many action movies?' or 'top rated movies?')"
-              className="flex-1 bg-transparent outline-none p-2 text-white placeholder-gray-400 text-sm"
+              className="flex-1 bg-transparent outline-none p-2 text-white placeholder-gray-400 text-md"
+              style={{ color: suggestion && input.trim() ? 'transparent' : 'white' }}
+              ref={inputRef}
             />
             <button
               onClick={sendMessage}
