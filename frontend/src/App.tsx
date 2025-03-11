@@ -215,7 +215,7 @@ const App: React.FC = () => {
         <div className="w-full md:w-1/4">
           <button
             onClick={() => setIsSchemaOpen(!isSchemaOpen)}
-            className="w-full p-2 bg-gray-800 rounded-t-lg flex justify-between items-center hover:bg-gray-700 transition"
+            className="w-full p-2 bg-gray-700 rounded-t-lg flex justify-between items-center hover:bg-gray-700 transition"
           >
             <h2 className="text-xl font-bold">Schema</h2>
             <span>{isSchemaOpen ? '▼' : '▶'}</span>
@@ -239,7 +239,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Right Panel: Chatbot */}
-        <div className="w-full md:w-3/4 flex flex-col h-[860px]">
+        <div className="w-full md:w-3/4 flex flex-col h-[647px]">
           {/* Chat Area */}
           <div className="flex-1 overflow-y-auto mb-4 bg-gray-800 p-4 rounded-lg 
               [&::-webkit-scrollbar]:w-2
